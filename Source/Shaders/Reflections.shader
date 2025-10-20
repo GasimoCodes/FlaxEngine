@@ -109,39 +109,32 @@ ProbeBufferOutput PS_EnvProbe(Model_VS2PS input)
 META_PS(true, FEATURE_LEVEL_ES2)
 float4 PS_CombinePass(Quad_VS2PS input) : SV_Target0
 {
-    GBufferData gBufferData = GetGBufferData();
-    GBufferSample gBuffer = SampleGBuffer(gBufferData, input.TexCoord);
-    
-    if (gBuffer.ShadingModel == SHADING_MODEL_UNLIT)
-        return 0;
+	// Sample GBuffer
+	GBufferData gBufferData = GetGBufferData();
+	GBufferSample gBuffer = SampleGBuffer(gBufferData, input.TexCoord);
 
-    float4 specularProbe = SAMPLE_RT(Reflections, input.TexCoord);
-    float4 diffuseProbe = SAMPLE_RT(DiffuseReflections, input.TexCoord);
+	// Check if cannot light pixel
+	BRANCH
+	if (gBuffer.ShadingModel == SHADING_MODEL_UNLIT)
+	{
+		return 0;
+	}
 
-    // Skip if no probe contribution
-    if (specularProbe.a < 0.0001f && diffuseProbe.a < 0.0001f)
-        return 0;
-        
-    // Prepare lighting calculations
-    float3 V = normalize(gBufferData.ViewPos - gBuffer.WorldPos);
-    float NoV = saturate(dot(gBuffer.Normal, V));
+	// Sample reflections buffer
+	float3 reflections = SAMPLE_RT(Reflections, input.TexCoord).rgb;
 
-    float3 specularColor = GetSpecularColor(gBuffer);
-    float3 diffuseColor = GetDiffuseColor(gBuffer);
-    
-    float roughnessSq = gBuffer.Roughness * gBuffer.Roughness;
-    float specularOcclusion = GetSpecularOcclusion(NoV, roughnessSq, gBuffer.AO);
+	// Calculate specular color
+	float3 specularColor = GetSpecularColor(gBuffer);
 
-    float3 specularResponse = EnvBRDF(PreIntegratedGF, specularColor, gBuffer.Roughness, NoV) * specularOcclusion;
-    float3 diffuseResponse = diffuseColor * gBuffer.AO;
+	// Calculate reflecion color
+	float3 V = normalize(gBufferData.ViewPos - gBuffer.WorldPos);
+	float NoV = saturate(dot(gBuffer.Normal, V));
+	reflections *= EnvBRDF(PreIntegratedGF, specularColor, gBuffer.Roughness, NoV);
 
-    // Normalize contributions by total weight
-    float3 normalizedSpecular = specularProbe.a > 0.0001f ? specularProbe.rgb / specularProbe.a : 0;
-    float3 normalizedDiffuse = diffuseProbe.a > 0.0001f ? diffuseProbe.rgb / diffuseProbe.a : 0;
-    
-    // Apply material responses to the normalized probe contributions
-    float3 finalSpecular = normalizedSpecular * specularResponse;
-    float3 finalDiffuse = normalizedDiffuse * diffuseResponse;
+	// Apply specular occlusion
+	float roughnessSq = gBuffer.Roughness * gBuffer.Roughness;
+	float specularOcclusion = GetSpecularOcclusion(NoV, roughnessSq, gBuffer.AO);
+	reflections *= specularOcclusion;
 
-    return float4(finalSpecular + finalDiffuse, 0);
+	return float4(reflections, 0);
 }
