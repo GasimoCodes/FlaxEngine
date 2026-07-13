@@ -244,6 +244,9 @@ namespace FlaxEditor.CustomEditors
         /// </summary>
         protected readonly RootEditor Editor;
 
+        /// <summary>
+        /// The current selection.
+        /// </summary>
         public readonly ValueContainer Selection = new ValueContainer(ScriptMemberInfo.Null);
 
         /// <summary>
